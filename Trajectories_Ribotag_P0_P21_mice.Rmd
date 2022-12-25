@@ -1,0 +1,449 @@
+---
+title: "Pseudo-time analysis"
+subtitle: Exploration of Ribotag's data possible evolution
+author: "Elena Eyre, PhD"
+date: '2022-05-31'
+linkcolor: "steelblue2"
+#urlcolor: "tomato"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+  html_document:
+    toc: yes
+    toc_float: yes
+    toc_depth: 3
+#fontsize: 8 pt 
+#geometry: margin=1cm
+---
+
+# 1 Load
+
+## 1.1 Libraries of functions: 
+
+I uploaded data and packages of necessary functions to perform the calculations, and set the working directory.
+
+```{r, setup, results=FALSE, include=FALSE, echo = FALSE}
+knitr::opts_chunk$set(warning=FALSE)
+package_to_load <- c("readxl", "readr", "dplyr", "ggplot2", "tidyr", "dplyr","RColorBrewer", "car", "gplots")
+for (package in package_to_load) {
+  require(package, character.only = T); packageVersion(package)
+}
+extra_to_load <- c("knitr","stringr", "stringi", "ggrepel","ggpubr", "ggbreak","reshape2","ggfortify","cowplot","pheatmap","Seurat","data.table","Matrix")
+for (package in extra_to_load) {
+  require(package, character.only = T); packageVersion(package)
+}
+rm(package_to_load, extra_to_load)
+```
+
+## 1.2 Data
+
+I load the mouse model Ribotag CPM data.
+```{r, results='hide', message=FALSE, echo = FALSE}
+#df <- read_excel("/Volumes/ELENA_2/Trab_Elena/IDIBAPS/Roberta_Networks_Depict_and_GWAS/Extraction_Raw_data_RNAseq_POMCRibotag_P0vsP21_HFD.xlsx", sheet = "Raw_data")
+#df <- read_excel("G:/Trab_Elena/IDIBAPS/Roberta_Networks_Depict_and_GWAS/Extraction_Raw_data_RNAseq_POMCRibotag_P0vsP21_HFD.xlsx", sheet = "Raw_data")
+df <- read_excel("Extraction_Raw_data_RNAseq_POMCRibotag_P0vsP21_HFD.xlsx", sheet = "Raw_data")
+```
+
+I also load of the metadata from the Ribotag mouse model.
+```{r}
+#metadata <- read_excel("/Volumes/ELENA_2/Trab_Elena/IDIBAPS/Roberta_Networks_Depict_and_GWAS/Extraction_Raw_data_RNAseq_POMCRibotag_P0vsP21_HFD.xlsx", sheet = "Metadata")
+metadata <- read_excel("Extraction_Raw_data_RNAseq_POMCRibotag_P0vsP21_HFD.xlsx", sheet = "Metadata")
+#metadata <- read_excel("G:/Trab_Elena/IDIBAPS/Roberta_Networks_Depict_and_GWAS/Extraction_Raw_data_RNAseq_POMCRibotag_P0vsP21_HFD.xlsx",     sheet = "Metadata")
+```
+
+# 2. SingleCellExperiment
+
+In order to apply the trajectory packages, i need to generate a SingleCellExperiment object:
+
+```{r}
+library(SingleCellExperiment)
+gex <- df
+gex <- gex[,c(2:ncol(gex))]
+sce <- SingleCellExperiment(assays = list(counts = gex),
+                            colData=metadata)
+sce
+```
+
+# 3. Setting up trajectory environment
+
+<http://bioconductor.org/books/3.13/OSCA.workflows/nestorowa-mouse-hsc-smart-seq2.html#nestorowa-mouse-hsc-smart-seq2>
+
+```{r pressure, echo=FALSE}
+library(scRNAseq)
+sce.nest <- sce #NestorowaHSCData()
+colnames(colData(sce.nest)) # "Group"  "Sample" "Diet"   "Time"  
+
+assayNames(sce.nest) # "counts"
+#sce.nest <- logNormCounts(sce.nest)
+#assay(sce.nest, "normed") <- normalizeCounts(sce.nest,size.factors=runif(ncol(sce.nest)), pseudo.count=1.5)
+
+#rownames(sce.nest@assays@data$counts) <- rownames(gex)
+#colnames(sce.nest@assays@data$counts) <- colnames(gex)
+#assay(sce.nest, "cpm") <- sce.nest@assays@data$counts
+#assayNames(sce.nest) # "counts" "cpm"
+
+#sce.nest@assays@data$counts <- apply(sce.nest@assays@data$counts,1,as.numeric)
+#assay(sce.nest, "logNormCounts") <- log2(sce.nest@assays@data$counts)
+#assayNames(sce.nest) # "counts"        "cpm"           "logNormCounts"
+```
+
+Normalization:
+```{r}
+library(scuttle)
+assays(sce.nest)$logcounts <- log1p(assays(sce)$counts)
+#sce.nest <- scuttle::logNormCounts(sce.nest)
+assayNames(sce.nest) # "counts"    "logcounts"
+#assay(sce.nest, withDimnames=FALSE) <- normalizeCounts(as.data.frame(sce.nest@assays@data$counts))
+#sce.nest <- logNormCounts(sce.nest)
+#libsizes <- colSums(gex)
+#size.factors <- libsizes/mean(libsizes)
+#sce.nest@assays@data$counts <- log2(t(t(gex)/size.factors) + 1)
+#logcounts(sce.nest) <- normalizeCounts(sce.nest)
+#summary(sizeFactors(sce.nest))
+plot(librarySizeFactors(sce.nest), sizeFactors(sce.nest), pch=16,    xlab="Library size factors", ylab="Deconvolution factors", log="xy")
+```
+
+Variance modelling:
+
+```{r}
+#set.seed(00010101)
+#dec.nest <- modelGeneVarWithSpikes(sce.nest, "ERCC") # There's no altExps data
+#top.nest <- getTopHVGs(dec.nest, prop=0.1)
+```
+
+Dimenasionality reduction:
+```{r}
+set.seed(101010011)
+#sce.nest <- denoisePCA(sce.nest, technical=dec.nest, subset.row=top.nest)
+
+library(scater)
+pca_data <- prcomp(t(sce.nest@assays@data$counts), rank=50)
+library(Rtsne)
+set.seed(5252)
+tsne_data <- Rtsne(pca_data$x[,1:17], pca = FALSE, perplexity = 5)
+
+sce.nest <- runPCA(sce.nest)
+#sce.nest@int_colData@listData$reducedDims <- list(PCA=as.data.frame(pca_data$x), TSNE=as.data.frame(tsne_data$Y))
+#sce.nest@int_colData@listData$reducedDims$PCA <- as.data.frame(pca_data$x)
+#runPCA(sce.nest, rank = 2)<- as.data.frame(pca_data$x)
+#rownames(sce.nest@int_colData@listData$reducedDims$PCA) <- colnames(gex)
+#sce.nest@int_colData@listData$reducedDims$PCA <- agrppomc@reductions$pca@cell.embeddings
+#reducedDim(sce.nest, "PCA")
+#sce.nest@assays@data@listData$reducedDim$PCA <- sce.nest@int_colData@listData$reducedDims$PCA
+
+#sce.nest@int_colData@listData$reducedDims$TSNE <- as.data.frame(tsne_data$Y)
+#library(BiocSingular)
+#View(sce.nest@assays@data$counts)
+#rownames(sce.nest@int_colData@listData$reducedDims$TSNE) <- colnames(gex)
+sce.nest <- runTSNE(sce.nest, dimred="PCA")
+#sce.nest@int_colData@listData$reducedDims$TSNE <- agrppomc@reductions$tsne@cell.embeddings
+#sce.nest@int_colData@listData$reducedDims$UMAP <- agrppomc@reductions$umap@cell.embeddings
+#sce.nest@assays@data@listData$reducedDim$TSNE <- sce.nest@int_colData@listData$reducedDims$TSNE
+#colnames(sce.nest@assays@data@listData$reducedDim$TSNE) <- c('t_SNE1','t_SNE2')
+#reducedDim(sce.nest)
+
+sce.nest <- runUMAP(sce.nest, dimred="PCA")
+#reducedDims(sce.nest)$UMAP
+#sce.nest@int_colData@listData$reducedDims$UMAP <- calculateUMAP(as.matrix(sce.nest@assays@data$counts))
+#rownames(sce.nest@int_colData@listData$reducedDims$UMAP) <- colnames(gex)
+#colnames(reducedDims(sce.nest)$UMAP) <- c('UMAP1','UMAP2')
+```
+
+Clustering: 
+```{r}
+library(scran)
+snn.gr <- buildSNNGraph(sce.nest, use.dimred="PCA")
+colLabels(sce.nest) <- factor(igraph::cluster_walktrap(snn.gr)$membership)
+table(colLabels(sce.nest))
+library(scater)
+plotTSNE(sce.nest, colour_by="Diet") 
+plotTSNE(sce.nest, colour_by="Time") 
+plotUMAP(sce.nest, colour_by="Diet") 
+plotUMAP(sce.nest, colour_by="Time") 
+```
+
+# 4. Cluster-based minimum spanning tree
+
+## 4.1 Basic steps Trajectory analysis:
+
+<http://bioconductor.org/books/3.13/OSCA.advanced/trajectory-analysis.html>
+
+```{r}
+library(scater)
+by.cluster <- aggregateAcrossCells(sce.nest, ids=colData(sce.nest)[,"Time"])
+
+centroids <- reducedDim(by.cluster, "PCA")
+
+# Set clusters=NULL as we have already aggregated above.
+#BiocManager::install("TSCAN")
+library(TSCAN)
+mst <- createClusterMST(centroids, clusters=NULL)
+mst
+```
+
+```{r}
+line.data <- reportEdges(by.cluster, mst=mst, clusters=NULL, use.dimred="TSNE")
+plotTSNE(sce.nest, colour_by="Time") + 
+    geom_line(data=line.data, mapping=aes(x=dim1, y=dim2, group=edge))
+line.data <- reportEdges(by.cluster, mst=mst, clusters=NULL, use.dimred="UMAP")
+plotUMAP(sce.nest, colour_by="Time") + 
+    geom_line(data=line.data, mapping=aes(x=dim1, y=dim2, group=edge))
+```
+
+```{r}
+map.tscan <- mapCellsToEdges(sce.nest, mst=mst, use.dimred="PCA")
+tscan.pseudo <- orderCells(map.tscan, mst)
+#BiocManager::install("TrajectoryUtils")
+library(TrajectoryUtils)
+common.pseudo <- averagePseudotime(tscan.pseudo) 
+line.data <- reportEdges(by.cluster, mst=mst, clusters=NULL, use.dimred="TSNE")
+plotTSNE(sce.nest, colour_by=I(common.pseudo), 
+        text_by="Time", text_colour="red") +
+    geom_line(data=line.data, mapping=aes(x=dim1, y=dim2, group=edge))
+
+line.data <- reportEdges(by.cluster, mst=mst, clusters=NULL, use.dimred="UMAP")
+plotUMAP(sce.nest, colour_by=I(common.pseudo), 
+        text_by="Time", text_colour="red") +
+    geom_line(data=line.data, mapping=aes(x=dim1, y=dim2, group=edge))
+pseudo.all <- quickPseudotime(sce.nest, use.dimred="PCA")
+head(pseudo.all$ordering)
+```
+
+## 4.2 Tweaking the MST
+
+```{r}
+pseudo.og <- quickPseudotime(sce.nest, use.dimred="PCA", outgroup=TRUE)
+set.seed(10101)
+plot(pseudo.og$mst)
+```
+
+```{r}
+library(mclust, quietly = TRUE)
+cl1 <- Mclust(pca_data$x)$classification
+colData(sce.nest)$GMM <- cl1
+library(RColorBrewer)
+plot(pca_data$x, col = brewer.pal(9,"Set1")[cl1], pch=16, asp = 1)
+
+cl2 <- kmeans(pca_data$x, centers = 4)$cluster
+colData(sce.nest)$kmeans <- cl2
+plot(pca_data$x, col = brewer.pal(9,"Set1")[cl2], pch=16, asp = 1)
+
+#BiocManager::install("batchelor")
+library("batchelor")
+pseudo.mnn <- quickPseudotime(sce.nest, use.dimred="PCA", with.mnn=TRUE)
+#BiocManager::install("TrajectoryUtils")
+library(TrajectoryUtils)
+mnn.pseudo <- averagePseudotime(pseudo.mnn$ordering)
+plotTSNE(sce.nest, colour_by=I(mnn.pseudo), text_by="Time", text_colour="red") +
+    geom_line(data=pseudo.mnn$connected$TSNE, mapping=aes(x=dim1, y=dim2, group=edge))
+
+plotUMAP(sce.nest, colour_by=I(mnn.pseudo), text_by="Time", text_colour="red") +
+    geom_line(data=pseudo.mnn$connected$UMAP, mapping=aes(x=dim1, y=dim2, group=edge))
+```
+
+## 4.3 Principal curves
+
+```{r}
+library(slingshot)
+sce.sling <- slingshot(sce.nest, reducedDim='PCA')
+head(sce.sling$slingPseudotime_1)
+```
+
+```{r}
+embedded <- embedCurves(sce.sling, "TSNE")
+embedded <- slingCurves(embedded)[[1]] # only 1 path.
+embedded <- data.frame(embedded$s[embedded$ord,])
+
+plotTSNE(sce.sling, colour_by="slingPseudotime_1",text_by="Time", text_colour="red") +
+    geom_path(data=embedded, aes(x=Dim.1, y=Dim.2), size=1.2)
+
+embedded <- embedCurves(sce.sling, "UMAP")
+embedded <- slingCurves(embedded)[[1]] # only 1 path.
+embedded <- data.frame(embedded$s[embedded$ord,])
+plotUMAP(sce.sling, colour_by="slingPseudotime_1",text_by="Time", text_colour="red") +
+    geom_path(data=embedded, aes(x=Dim.1, y=Dim.2), size=1.2)
+```
+
+```{r}
+sce.sling2 <- slingshot(sce.nest, cluster=colLabels(sce.nest), reducedDim='PCA')
+pseudo.paths <- slingPseudotime(sce.sling2)
+head(pseudo.paths)
+```
+
+```{r}
+sce.nest <- runUMAP(sce.nest, dimred="PCA")
+reducedDim(sce.sling2, "UMAP") <- reducedDim(sce.nest, "UMAP")
+
+# Taking the rowMeans just gives us a single pseudo-time for all cells. Cells
+# in segments that are shared across paths have similar pseudo-time values in 
+# all paths anyway, so taking the rowMeans is not particularly controversial.
+shared.pseudo <- rowMeans(pseudo.paths, na.rm=TRUE)
+
+# Need to loop over the paths and add each one separately.
+gg <- plotUMAP(sce.sling2, colour_by=I(shared.pseudo),text_by="Time", text_colour="red")
+embedded <- embedCurves(sce.sling2, "UMAP")
+embedded <- slingCurves(embedded)
+for (path in embedded) {
+    embedded <- data.frame(path$s[path$ord,])
+    gg <- gg + geom_path(data=embedded, aes(x=Dim.1, y=Dim.2), size=1.2)
+}
+
+gg
+```
+
+```{r}
+curve.assignments <- slingBranchID(sce.sling2)
+table(curve.assignments)
+```
+
+```{r}
+sce.sling3 <- slingshot(sce.nest, cluster=colLabels(sce.nest), 
+    reducedDim='PCA', approx_points=100)
+pseudo.paths3 <- slingPseudotime(sce.sling3)
+head(pseudo.paths3)
+```
+
+```{r}
+sce.sling4 <- slingshot(sce.nest, cluster=colLabels(sce.nest), 
+    reducedDim='PCA', approx_points=100, omega=TRUE)
+pseudo.paths4 <- slingPseudotime(sce.sling4)
+head(pseudo.paths4)
+```
+
+```{r}
+shared.pseudo <- rowMeans(pseudo.paths, na.rm=TRUE)
+gg <- plotUMAP(sce.sling4, colour_by=I(shared.pseudo),text_by="Time", text_colour="red")
+embedded <- embedCurves(sce.sling4, "UMAP")
+embedded <- slingCurves(embedded)
+for (path in embedded) {
+    embedded <- data.frame(path$s[path$ord,])
+    gg <- gg + geom_path(data=embedded, aes(x=Dim.1, y=Dim.2), size=1.2)
+}
+gg
+```
+
+# 5. Characterizing trajectories
+
+## 5.1 Changes along a trajectory
+
+```{r}
+#library(TSCAN)
+#pseudo <- testPseudotime(sce.nest, pseudotime=tscan.pseudo[,1])[[1]] ## ERROR: 'not enough unique pseudotime values for the specified 'df'
+#pseudo$SYMBOL <- rowData(sce.nest)$SYMBOL
+#pseudo[order(pseudo$p.value),]
+```
+
+```{r}
+# Making a copy of our SCE and including the pseudotimes in the colData.
+#sce.nest2 <- sce.nest
+#sce.nest2$TSCAN.first <- pathStat(tscan.pseudo)[,1] ## ERROR:  no se pudo encontrar la función "pathStat"
+#sce.nest2$TSCAN.second <- pathStat(tscan.pseudo)[,2] ## ERROR:  no se pudo encontrar la función "pathStat"
+
+# Discarding the offending cluster.
+#discard <- "7"
+#keep <- colLabels(sce.nest)!=discard
+#sce.nest2 <- sce.nest2[,keep]
+
+# Testing against the first path again.
+#pseudo <- testPseudotime(sce.nest2, pseudotime=sce.nest2$TSCAN.first)
+#pseudo$SYMBOL <- rowData(sce.nest2)$SYMBOL
+#sorted <- pseudo[order(pseudo$p.value),]
+#up.left <- sorted[sorted$logFC < 0,]
+#head(up.left, 10)
+#best <- head(up.left$SYMBOL, 10)
+#plotExpression(sce.nest2, features=best, swap_rownames="SYMBOL",x="TSCAN.first", colour_by="label")
+
+#up.right <- sorted[sorted$logFC > 0,]
+#head(up.right, 10)
+#best <- head(up.right$SYMBOL, 10)
+#plotExpression(sce.nest2, features=best, swap_rownames="SYMBOL",x="TSCAN.first", colour_by="label")
+#on.first.path <- !is.na(sce.nest2$TSCAN.first)
+#plotHeatmap(sce.nest2[,on.first.path], order_columns_by="TSCAN.first", colour_columns_by="label", features=head(up.right$SYMBOL, 50),center=TRUE, swap_rownames="SYMBOL")
+```
+
+## 5.2 Changes between paths
+
+```{r}
+#starter <- "3"
+#tscan.pseudo2 <- orderCells(map.tscan, mst, start=starter)
+# Making a copy and giving the paths more friendly names.
+#sub.nest <- sce.nest
+#sub.nest$TSCAN.first <- pathStat(tscan.pseudo2)[,1] ## ERROR: no se pudo encontrar la función "pathStat"
+#sub.nest$TSCAN.second <- pathStat(tscan.pseudo2)[,2] ## ERROR: no se pudo encontrar la función "pathStat"
+#sub.nest$TSCAN.third <- pathStat(tscan.pseudo2)[,3] ## ERROR: no se pudo encontrar la función "pathStat"
+
+# Subsetting to the desired cluster containing the branch point.
+#keep <- colLabels(sce.nest) == starter
+#sub.nest <- sub.nest[,keep]
+
+# Showing only the lines to/from our cluster of interest.
+#line.data.sub <- line.data[grepl("^3--", line.data$edge) | grepl("--3$", line.data$edge),]
+#ggline <- geom_line(data=line.data.sub, mapping=aes(x=dim1, y=dim2, group=edge))
+
+#gridExtra::grid.arrange(
+#    plotTSNE(sub.nest, colour_by="TSCAN.first") + ggline,
+#    plotTSNE(sub.nest, colour_by="TSCAN.second") + ggline,
+#    plotTSNE(sub.nest, colour_by="TSCAN.third") + ggline,
+#    ncol=3
+#)
+
+#pseudo1 <- testPseudotime(sub.nest, df=1, #pseudotime=sub.nest$TSCAN.first)
+#pseudo1$SYMBOL <- rowData(sce.nest)$SYMBOL
+#pseudo1[order(pseudo1$p.value),]
+
+#pseudo2 <- testPseudotime(sub.nest, df=1, pseudotime=sub.nest$TSCAN.second)
+#pseudo2$SYMBOL <- rowData(sce.nest)$SYMBOL
+#pseudo2[order(pseudo2$p.value),]
+
+#pseudo3 <- testPseudotime(sub.nest, df=1, pseudotime=sub.nest$TSCAN.third)
+#pseudo3$SYMBOL <- rowData(sce.nest)$SYMBOL
+#pseudo3[order(pseudo3$p.value),]
+
+#only3 <- pseudo3[which(pseudo3$FDR <= 0.05 &     (pseudo2$p.value >= 0.05 | sign(pseudo1$logFC)!=sign(pseudo3$logFC)) &    (pseudo2$p.value >= 0.05 | sign(pseudo2$logFC)!=sign(pseudo3$logFC))),]
+#only3[order(only3$p.value),]
+
+#gridExtra::grid.arrange(
+#    plotTSNE(sub.nest, colour_by="Flt3", swap_rownames="SYMBOL") + ggline,
+#    plotTSNE(sub.nest, colour_by="Apoe", swap_rownames="SYMBOL") + ggline,
+#    plotTSNE(sub.nest, colour_by="Gata2", swap_rownames="SYMBOL") + ggline,
+#    plotTSNE(sub.nest, colour_by="Cd9", swap_rownames="SYMBOL") + ggline
+#)
+
+```
+
+```{r}
+# Getting rid of the NA's; using the cell weights
+# to indicate which cell belongs on which path.
+#nonna.pseudo <- pathStat(tscan.pseudo)
+#not.on.path <- is.na(nonna.pseudo)
+#nonna.pseudo[not.on.path] <- 0
+#cell.weights <- !not.on.path
+#storage.mode(cell.weights) <- "numeric"
+
+# Fitting a GAM on the subset of genes for speed.
+#library(tradeSeq)
+#fit <- fitGAM(counts(sce.nest)[1:100,], 
+#    pseudotime=nonna.pseudo,
+#    cellWeights=cell.weights)
+
+#res <- patternTest(fit)
+#res$Symbol <- rowData(sce.nest)[1:100,"SYMBOL"]
+#res <- res[order(res$pvalue),]
+#head(res, 10)
+```
+
+## 5.3 Entrophy based methods:
+
+```{r}
+library(TSCAN)
+entropy <- perCellEntropy(sce.nest)
+ent.data <- data.frame(cluster=colLabels(sce.nest), entropy=entropy)
+ggplot(ent.data, aes(x=cluster, y=entropy)) + 
+    geom_violin() +
+    coord_cartesian(ylim=c(7, NA)) +
+    stat_summary(fun=median, geom="point")
+```
+
+
+
