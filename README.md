@@ -10,12 +10,8 @@ homology and GWAS analyses.
 
 | File | Description |
 |---|---|
-| `Trajectories_P0_vs_P21.Rmd` | Pseudotime analysis comparing P0 and P21 samples. |
-| `Trajectories_Ribotag_P0_P21_mice.Rmd` | Trajectory analysis of mouse RiboTag data. |
-| `Plots_62_genes_Fe_metabolism_P0_P21_mice.Rmd` | Expression plots for 62 iron-metabolism-related genes. |
 | `GWAS_homology_mmu_hsa.R` | Matches mouse and human homologs with obesity GWAS data and prepares gene/SNP lists for downstream analysis. |
 | `Heatmap.R` and `Heatmap_new data .R` | Heatmap visualizations. |
-| `Alluvial try.R` | Alluvial plot code (not published). |
 
 ## Data
 
