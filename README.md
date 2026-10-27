@@ -24,13 +24,65 @@ expected filenames, sheets, and formats.
 
 ## Requirements
 
-R and the packages used by the individual scripts are required. Depending on
-which analysis you run, these include packages such as `readxl`, `dplyr`,
-`ggplot2`, `SingleCellExperiment`, `scater`, `scran`, `slingshot`, and
-`tradeSeq`.
+These analyses are implemented in **R** and rely on CRAN and Bioconductor packages.
+Because scripts are run independently, package needs vary by file.
 
-The repository does not currently provide a locked package environment, so
-package versions may affect reproducibility.
+### R version
+
+- Recommended: **R >= 4.1** (R 4.2+ preferred)
+
+### Core packages used across scripts
+
+- `readxl` (Excel input)
+- `dplyr`, `tidyr`, `tibble` (data wrangling)
+- `stringr` (string handling)
+- `ggplot2` (visualization)
+- `pheatmap` and/or `ComplexHeatmap` (heatmaps; depends on script)
+- `openxlsx` or `writexl` (table export; if enabled in script)
+
+### Single-cell / trajectory analysis packages (used in trajectory-focused scripts)
+
+- `SingleCellExperiment`
+- `scater`
+- `scran`
+- `slingshot`
+- `tradeSeq`
+
+### Optional / script-specific packages
+
+Some scripts may additionally require packages for:
+- annotation and gene ID conversion (e.g., `biomaRt`, `AnnotationDbi`, organism-specific `org.*.eg.db`)
+- GWAS summary table handling and joins
+- plotting themes / label management (e.g., `cowplot`, `patchwork`, `ggrepel`)
+
+Please check the `library(...)` calls at the top of each script for the exact set needed for that analysis.
+
+## Requirements
+
+### Install packages
+
+CRAN packages:
+
+```r
+install.packages(c(
+  "readxl", "dplyr", "tidyr", "tibble", "stringr",
+  "ggplot2", "pheatmap", "openxlsx", "writexl"
+))
+```
+
+Bioconductor packages:
+
+```r
+if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+BiocManager::install(c(
+  "SingleCellExperiment", "scater", "scran", "slingshot", "tradeSeq"
+))
+```
+
+### Reproducibility note
+
+This repository currently does **not** include a pinned environment (`renv.lock` or container).
+For reproducible results, we recommend recording `sessionInfo()` output for each run and, if possible, creating a local `renv` environment.
 
 ## Publication
 
